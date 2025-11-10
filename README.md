@@ -42,3 +42,62 @@ System info, shutdown/restart (with prompts)
 Optional overlay GUI with circular avatar and listening indicator.
 
 Lots of comments and clear code structure — easy to extend.
+
+
+
+.
+
+🧰 Requirements
+Python 3.8+
+
+Recommended packages:
+
+bash
+Copy code
+pip install pyttsx3 SpeechRecognition sounddevice numpy pyautogui Pillow colorama psutil
+Platform notes:
+
+Windows: pyttsx3 typically uses sapi5; PowerShell fallback is available by default.
+
+Linux: pyttsx3 may use espeak; ensure espeak installed.
+
+macOS: pyttsx3 may use nsss.
+
+⚙️ Installation
+Clone this repo:
+
+bash
+Copy code
+git clone <your-repo-url>
+cd loki-assistant
+Install requirements:
+
+bash
+Copy code
+pip install -r requirements.txt
+Or install individually if you prefer.
+
+(Optional) If you want the overlay and circular avatar, ensure tkinter and Pillow are installed and a GIF path is configured.
+
+▶️ Usage
+Run the assistant:
+
+bash
+Copy code
+python Loki_assistant2_voice_for_all.py
+On start it will announce itself (voice) and then listen. Speak commands like:
+
+"Open Chrome" → opens browser and says "Opening Google Chrome."
+
+"What time is it?" → speaks current time.
+
+"Take a screenshot" → countdown and saves screenshot, then speaks confirmation.
+
+"Calculate 12 divided by 4" → speaks the answer.
+
+"Set a timer for 30 seconds" → sets timer and announces when finished.
+
+You can also type or extend command handlers in the code.
+
+
+
