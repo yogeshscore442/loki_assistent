@@ -17,12 +17,13 @@ Robust TTS handling with a synchronized engine lock to avoid missed speech.
 Safe, offline-first design — no required cloud dependencies (speech recognition uses Google Web Speech by default; can be swapped).
 
 ✅ Features
+
+
 Voice input (speech recognition) and voice output (TTS) for all responses.
 
 Programmatic phrase generation producing 150+ distinct phrase variants.
 
-Handlers for:
-
+Handlers for
 Opening/closing apps (Chrome, VSCode, etc.)
 
 Taking single screenshots (suppresses listening while counting down)
