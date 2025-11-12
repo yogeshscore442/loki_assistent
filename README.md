@@ -79,7 +79,7 @@ Run the assistant using:
 bash
 python Loki_assistant2.py
 
-"If you get any errors in python Loki_assistant2.py , use this file. Additional functions have been added in , try it 🔥
+If you get any errors in python Loki_assistant2.py , use this file. Additional functions have been added in , try it 🔥
 
 bash
 python Loki_assistant.py
