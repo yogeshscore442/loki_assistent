@@ -53,3 +53,32 @@ Shutdown / Restart (with confirmation prompts)
 Displays a circular avatar indicating listening, speaking, and idle states.
 
 Shows the last message and response dynamically.
+
+
+# 🧠 Loki Assistant
+
+Loki Assistant is a local, voice-driven personal assistant written in Python.
+It listens for spoken commands, performs useful daily tasks, and speaks every response aloud.
+
+---
+
+## ⚙️ Installation
+
+Clone the repository:
+Install dependencies:
+```bash
+git clone <your-repo-url>
+cd loki-assistant
+
+
+bash
+
+pip install -r requirements.txt
+
+Run the assistant using:
+
+bash
+python Loki_assistant2_voice_for_all.py
+
+
+
