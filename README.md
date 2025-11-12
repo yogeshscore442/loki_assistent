@@ -70,15 +70,12 @@ Install dependencies:
 git clone <your-repo-url>
 cd loki-assistant
 
-
-bash
-
 pip install -r requirements.txt
 
 Run the assistant using:
 
 bash
-python Loki_assistant2_voice_for_all.py
+python Loki_assistant2.py
 
 
 
