@@ -1,104 +1,55 @@
-# loki_assistent
+🧠 Loki Assistant
 
 Loki Assistant is a local, voice-driven personal assistant written in Python.
-It listens for spoken commands, performs common tasks (open apps, search web, take screenshots, simple math, timers, notes, conversions, etc.), and speaks every response out loud using the local TTS engine. The project includes a lightweight optional overlay UI and a large set of recognized phrases (150+ generated operations) so the assistant understands many natural phrasings.
+It listens for spoken commands, performs useful daily tasks (like opening apps, taking screenshots, searching the web, solving math problems, setting reminders, and more), and speaks every response out loud using your local Text-to-Speech (TTS) engine.
+
+The project includes a lightweight optional overlay UI, and features 150+ natural command phrases — so Loki understands a wide range of user inputs.
 
 🚀 Highlights
-Voice-first: every assistant output is spoken (pyttsx3 with PowerShell fallback on Windows).
 
-150+ programmatically generated command phrases (verbs × targets) to cover many natural variants.
+🎙️ Voice-first: All responses are spoken aloud (via pyttsx3, with PowerShell fallback on Windows).
 
-Useful built-in operations: open/close apps, browser search, screenshots, timer/reminder, quick notes, conversions, simple math, system info.
+🧩 150+ command phrases: Programmatically generated from verbs × targets for natural speech coverage.
 
-Optional circular overlay showing listening / last messages (requires tkinter + Pillow).
+⚙️ Offline-first: Works without internet (uses Google Web Speech by default but can be swapped).
 
-Robust TTS handling with a synchronized engine lock to avoid missed speech.
+💻 Cross-platform support: Works on Windows, Linux, and macOS.
 
-Safe, offline-first design — no required cloud dependencies (speech recognition uses Google Web Speech by default; can be swapped).
+🖼️ Optional overlay UI: Circular avatar and listening indicator using tkinter + Pillow.
+
+🔒 Synchronized TTS engine lock to avoid missed or overlapping speech.
+
+🧠 Simple, well-structured code with comments for easy extension and customization.
 
 ✅ Features
+🎤 Voice Input & Output
 
+Recognizes your speech and speaks all responses out loud.
 
-Voice input (speech recognition) and voice output (TTS) for all responses.
+Works completely offline once dependencies are installed.
 
-Programmatic phrase generation producing 150+ distinct phrase variants.
+🛠️ Built-in Command Handlers
 
-Handlers for
-Opening/closing apps (Chrome, VSCode, etc.)
+Open/Close Apps (e.g., Chrome, VSCode, etc.)
 
-Taking single screenshots (suppresses listening while counting down)
+Web Search (opens default browser)
 
-Web search (opens browser)
+Take Screenshots (with countdown and listening suppression)
 
-Timers & reminders
+Set Timers / Reminders (announces when finished)
 
-Quick notes (local notes file)
+Quick Notes (stores notes locally)
 
-Simple two-number arithmetic
+Simple Arithmetic (e.g., “calculate 12 divided by 4”)
 
-Unit conversions (meters↔km, °C↔°F)
+Unit Conversions (e.g., meters ↔ kilometers, °C ↔ °F)
 
-System info, shutdown/restart (with prompts)
+System Information (CPU usage, battery, etc.)
 
-Optional overlay GUI with circular avatar and listening indicator.
+Shutdown / Restart (with confirmation prompts)
 
-Lots of comments and clear code structure — easy to extend.
+🖥️ Optional Overlay GUI
 
+Displays a circular avatar indicating listening, speaking, and idle states.
 
-
-.
-
-🧰 Requirements
-Python 3.8+
-
-Recommended packages:
-
-bash
-Copy code
-pip install pyttsx3 SpeechRecognition sounddevice numpy pyautogui Pillow colorama psutil
-Platform notes:
-
-Windows: pyttsx3 typically uses sapi5; PowerShell fallback is available by default.
-
-Linux: pyttsx3 may use espeak; ensure espeak installed.
-
-macOS: pyttsx3 may use nsss.
-
-⚙️ Installation
-Clone this repo:
-
-bash
-Copy code
-git clone <your-repo-url>
-cd loki-assistant
-Install requirements:
-
-bash
-Copy code
-pip install -r requirements.txt
-Or install individually if you prefer.
-
-(Optional) If you want the overlay and circular avatar, ensure tkinter and Pillow are installed and a GIF path is configured.
-
-▶️ Usage
-Run the assistant:
-
-bash
-Copy code
-python Loki_assistant2_voice_for_all.py
-On start it will announce itself (voice) and then listen. Speak commands like:
-
-"Open Chrome" → opens browser and says "Opening Google Chrome."
-
-"What time is it?" → speaks current time.
-
-"Take a screenshot" → countdown and saves screenshot, then speaks confirmation.
-
-"Calculate 12 divided by 4" → speaks the answer.
-
-"Set a timer for 30 seconds" → sets timer and announces when finished.
-
-You can also type or extend command handlers in the code.
-
-
-
+Shows the last message and response dynamically.
