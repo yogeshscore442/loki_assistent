@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Loki Assistant  — Full assistant with circular GIF overlay.
+Loki Assistant — Single-file advanced version with YouTube ad-skip and next-track.
+Save as: loki_assistant2.py
+Run: python loki_assistant2.py
 
-Save as: Loki_assistant2.py
-Run: python Loki_assistant2.py
+Requirements:
+  pip install speechrecognition pyttsx3 pyautogui sounddevice numpy pillow colorama psutil pygetwindow opencv-python
 
-Notes:
-- Update USER_GIF if you want a different GIF path.
-- Fallback GIF is provided from container path if user GIF missing.
-- On non-Windows systems, PowerShell TTS fallback is skipped.
+Optional:
+  - skip_ad.png (screenshot of YouTube Skip Ad button) placed in same folder for more reliable skipping.
+
+Important:
+  - On macOS: give Python/Terminal Accessibility & Screen Recording permissions.
+  - Keep YouTube visible and not minimized for automation to work reliably.
 """
 
 import os
@@ -21,6 +25,7 @@ import re
 import datetime
 import shutil
 import platform
+import math
 
 # UI imports (optional)
 try:
@@ -36,7 +41,10 @@ except Exception:
     Image = None
 
 # Assistant imports
-import speech_recognition as sr
+try:
+    import speech_recognition as sr
+except Exception:
+    sr = None
 import pyttsx3
 import webbrowser
 import pyautogui
@@ -46,19 +54,36 @@ import wave
 from colorama import Fore, Style, init
 import psutil
 
+# optional window focus helper
+try:
+    import pygetwindow as gw
+except Exception:
+    gw = None
+
+# optional OpenCV for better image matching (confidence)
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
 init(autoreset=True)
 
-# ---------- Paths ----------
-USER_GIF = "C:\\Users\\YOGESH\\Downloads\\tenor.gif"  # <- raw string to avoid unicodeescape
+# ---------- Config ----------
+USER_GIF = r"C:\Users\YOGESH\Downloads\tenor.gif"  # change if needed
 FALLBACK_GIF = r"/mnt/data/5df7237e-e9cd-4523-8b94-1b1552c8b555.gif"
 GIF_PATH = USER_GIF if os.path.exists(USER_GIF) else FALLBACK_GIF
+
+# Optional image names to detect skip button
+SKIP_IMAGE_NAMES = ["skip_ad.png", "skip_ad_button.png", "skipad.png", "skip-ads.png"]
 
 # GUI availability check
 ENABLE_GUI = (tk is not None and Image is not None and os.path.exists(GIF_PATH))
 
-# ---------- Helpers ----------
+# pyautogui settings
+pyautogui.PAUSE = 0.05
+
+# ---------- Small helpers ----------
 def find_process_by_name(name):
-    """Return list of psutil.Process objects whose name contains 'name' (case-insensitive)."""
     found = []
     try:
         name = name.lower()
@@ -71,7 +96,6 @@ def find_process_by_name(name):
     return found
 
 def make_circular_image(pil_img, size):
-    """Resize pil_img to (size,size) and apply circular mask."""
     try:
         img = pil_img.convert("RGBA").resize((size, size), Image.LANCZOS)
         mask = Image.new('L', (size, size), 0)
@@ -105,14 +129,12 @@ class OverlayGUI(threading.Thread):
             self.root.title("Loki Overlay")
             self.root.attributes("-topmost", True)
             self.root.overrideredirect(True)
-            # Transparent-like background on Windows: use a dark bg and rounded GIF
             bg = "#111111"
             self.root.configure(bg=bg)
 
-            # position bottom-right
             screen_w = self.root.winfo_screenwidth()
             screen_h = self.root.winfo_screenheight()
-            width = 300
+            width = 320
             height = 120
             x = max(0, screen_w - width - 20)
             y = max(0, screen_h - height - 60)
@@ -121,7 +143,6 @@ class OverlayGUI(threading.Thread):
             frame = tk.Frame(self.root, bg=bg)
             frame.pack(fill="both", expand=True)
 
-            # canvas for circular GIF
             self.canvas = tk.Canvas(frame, width=self._size, height=self._size,
                                     bg=bg, highlightthickness=0)
             self.canvas.grid(row=0, column=0, rowspan=3, padx=(10, 8), pady=10)
@@ -135,9 +156,7 @@ class OverlayGUI(threading.Thread):
             self.assistant_label = tk.Label(frame, text='Loki: ', fg='#bbbbbb', bg=bg, font=('Segoe UI', 9))
             self.assistant_label.grid(row=2, column=1, sticky='w')
 
-            # load GIF frames
             self._load_gif_frames()
-            # animate and poll
             self._animate(0)
             self._poll()
             self.root.mainloop()
@@ -221,7 +240,7 @@ class OverlayGUI(threading.Thread):
         except Exception:
             pass
 
-# ---------- Loki Assistant (full features) ----------
+# ---------- Loki Assistant ----------
 class LokiAssistant:
     def __init__(self, overlay_queue=None):
         # TTS engine
@@ -239,16 +258,16 @@ class LokiAssistant:
         self.tts_thread.start()
 
         # recognizer
-        self.recognizer = sr.Recognizer()
+        self.recognizer = sr.Recognizer() if sr else None
         self.listen_duration = 7
         self._suppress_listen = False
         self._last_spoken_time = 0
-        self.print_responses = True  # set False to silence console assistant prints
+        self.print_responses = True
         self._last_command = None
         self._last_command_time = 0
         self.duplicate_action_window = 5
 
-        # operators for math
+        # math ops
         self.operators = {
             '+': lambda x, y: x + y,
             '-': lambda x, y: x - y,
@@ -275,6 +294,9 @@ class LokiAssistant:
         # overlay integration
         self.overlay_queue = overlay_queue
 
+        # preferred browser tokens
+        self.PREFERRED_BROWSER_TITLES = ['chrome', 'youtube', 'edge', 'firefox', 'brave']
+
     def setup_voice(self):
         if self.engine:
             try:
@@ -290,11 +312,9 @@ class LokiAssistant:
             except Exception:
                 self.engine = None
 
-    # TTS: queue text and worker
     def speak(self, text):
         if not text:
             return
-        # update overlay label
         try:
             if self.overlay_queue:
                 self.overlay_queue.put(('assistant', text))
@@ -312,12 +332,10 @@ class LokiAssistant:
         except Exception:
             pass
 
-        # push to queue
         try:
             self.tts_queue.put_nowait(text)
             return
         except queue.Full:
-            # drain and retry
             try:
                 while not self.tts_queue.empty():
                     self.tts_queue.get_nowait()
@@ -329,7 +347,6 @@ class LokiAssistant:
             except Exception:
                 pass
 
-        # fallback to direct speak
         try:
             self._powershell_speak(text)
         except Exception:
@@ -368,7 +385,6 @@ class LokiAssistant:
             time.sleep(0.01)
 
     def _powershell_speak(self, text: str):
-        """Windows PowerShell TTS fallback. Raises if failed so we can try pyttsx3."""
         if not text:
             return
         if platform.system().lower() != "windows":
@@ -410,7 +426,6 @@ class LokiAssistant:
             if result.returncode != 0:
                 raise Exception(f"PowerShell TTS failed: {result.stderr}")
         except Exception as e:
-            # print but re-raise so caller can fallback
             print(f"{Fore.YELLOW}PowerShell TTS error: {e}{Style.RESET_ALL}")
             raise
 
@@ -428,9 +443,9 @@ class LokiAssistant:
             wf.setframerate(sample_rate)
             wf.writeframes((recording * 32767).astype(np.int16).tobytes())
 
+    # --------- FIXED listen() (no 'with sd.rec(...) as ...') ----------
     def listen(self):
         """Record and transcribe, with safeguards against hearing assistant."""
-        # overlay: listening True
         try:
             if self.overlay_queue:
                 self.overlay_queue.put(('listening', True))
@@ -443,31 +458,58 @@ class LokiAssistant:
             last = getattr(self, '_last_spoken_time', 0)
             if time.time() - last < 0.6:
                 return ""
-            recording = self.record_audio()
-            temp_file = "temp_recording.wav"
-            self.save_audio(recording, temp_file)
-            with sr.AudioFile(temp_file) as source:
-                audio = self.recognizer.record(source)
-                try:
-                    command = self.recognizer.recognize_google(audio).lower()
-                except sr.UnknownValueError:
-                    self.speak("Sorry, I didn't catch that. Please say that again clearly.")
-                    command = ""
-                except sr.RequestError as e:
-                    print(f"{Fore.RED}Recognition request error: {e}{Style.RESET_ALL}")
-                    self.speak("Sorry, there was an error with the speech recognition service.")
-                    command = ""
-                except Exception as e:
-                    print(f"{Fore.RED}Recognition error: {e}{Style.RESET_ALL}")
-                    self.speak("Sorry, I couldn't reach the speech service.")
-                    command = ""
+
+            if not self.recognizer:
+                return ""
+
+            # RECORD properly
             try:
-                os.remove(temp_file)
-            except Exception:
-                pass
+                recording = self.record_audio()
+            except Exception as e:
+                print(f"{Fore.RED}Recording error: {e}{Style.RESET_ALL}")
+                self.speak("Microphone error. Please ensure your microphone is connected.")
+                return ""
+
+            temp_file = "temp_recording.wav"
+            try:
+                self.save_audio(recording, temp_file)
+            except Exception as e:
+                print(f"{Fore.RED}Save audio error: {e}{Style.RESET_ALL}")
+                self.speak("Microphone error while saving audio.")
+                return ""
+
+            # TRANSCRIBE
+            try:
+                with sr.AudioFile(temp_file) as source:
+                    audio = self.recognizer.record(source)
+                    try:
+                        command = self.recognizer.recognize_google(audio).lower()
+                    except sr.UnknownValueError:
+                        self.speak("Sorry, I didn't catch that. Please say that again clearly.")
+                        command = ""
+                    except sr.RequestError as e:
+                        print(f"{Fore.RED}Recognition request error: {e}{Style.RESET_ALL}")
+                        self.speak("Sorry, there was an error with the speech recognition service.")
+                        command = ""
+                    except Exception as e:
+                        print(f"{Fore.RED}Recognition error: {e}{Style.RESET_ALL}")
+                        self.speak("Sorry, I couldn't reach the speech service.")
+                        command = ""
+            finally:
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+
             if self.print_responses and command:
                 print(f"{Fore.YELLOW}🗣️ You said: {command}{Style.RESET_ALL}")
+            try:
+                if self.overlay_queue:
+                    self.overlay_queue.put(('user', command))
+            except Exception:
+                pass
             return command
+
         except Exception as e:
             print(f"{Fore.RED}Microphone error: {e}{Style.RESET_ALL}")
             self.speak("Microphone error. Please ensure your microphone is connected.")
@@ -479,13 +521,12 @@ class LokiAssistant:
             except Exception:
                 pass
 
-    # screenshot: single-screenshot flow with suppression to avoid re-trigger
+    # screenshot
     def take_screenshot(self):
         try:
             screenshots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Screenshots')
             if not os.path.exists(screenshots_dir):
                 os.makedirs(screenshots_dir)
-            # suppress listening while counting down
             self._suppress_listen = True
             for i in range(2, 0, -1):
                 self.speak(str(i))
@@ -496,13 +537,11 @@ class LokiAssistant:
             screenshot.save(screenshot_path)
             self._suppress_listen = False
             self._last_spoken_time = time.time()
-            # announce and open
             self.speak("Captured and saved in the Yogesh folder.")
             try:
                 if platform.system().lower() == "windows":
                     os.startfile(screenshot_path)
                 else:
-                    # attempt to open on mac/linux
                     subprocess.Popen(['xdg-open', screenshot_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 pass
@@ -510,11 +549,9 @@ class LokiAssistant:
             print(f"{Fore.RED}Screenshot error: {e}{Style.RESET_ALL}")
             self.speak("Sorry, I couldn't take a screenshot.")
 
-    # weather placeholder
     def get_weather(self):
         self.speak("I need a weather API key configured to fetch weather.")
 
-    # open app helper
     def open_app(self, key, url=None):
         system = platform.system().lower()
         try:
@@ -526,7 +563,6 @@ class LokiAssistant:
                     else:
                         subprocess.Popen([chrome], shell=False)
                     return True
-                # common paths
                 pf = os.environ.get('PROGRAMFILES', r'C:\Program Files')
                 pf86 = os.environ.get('PROGRAMFILES(X86)', r'C:\Program Files (x86)')
                 candidates = [
@@ -544,7 +580,6 @@ class LokiAssistant:
                     webbrowser.open(url)
                     return True
                 return False
-
             if key == 'vscode' or key == 'code':
                 code = shutil.which('code')
                 if code:
@@ -561,7 +596,6 @@ class LokiAssistant:
             print(f"{Fore.RED}open_app error: {e}{Style.RESET_ALL}")
             return False
 
-    # close app helper
     def close_app(self, app_name):
         try:
             procs = find_process_by_name(app_name)
@@ -580,14 +614,12 @@ class LokiAssistant:
             self.speak(f"Sorry, I couldn't close {app_name}.")
             return False
 
-    # math solver (simple two-number operations)
     def solve_math(self, expression):
         try:
             expr = expression.lower()
             expr = expr.replace('what is', '').replace('calculate', '').replace('solve', '')
-            expr = expr.replace('what\'s', '').replace('whats', '').replace('equals', '')
+            expr = expr.replace("what's", '').replace('whats', '').replace('equals', '')
             expr = expr.replace('equal to', '').replace('answer', '').strip()
-            # replace word ops
             expr = expr.replace('plus', '+').replace('minus', '-').replace('x', '*')
             expr = expr.replace('times', '*').replace('multiplied by', '*').replace('divided by', '/')
             number_pattern = r'-?\d+(?:\.\d+)?'
@@ -609,18 +641,156 @@ class LokiAssistant:
         except Exception:
             return None
 
-    # main command processor
+    # --------------- YouTube/Music controls ---------------
+    def _focus_browser_window(self):
+        try:
+            if gw:
+                all_titles = gw.getAllTitles()
+                for tkn in self.PREFERRED_BROWSER_TITLES:
+                    for title in all_titles:
+                        try:
+                            if title and tkn.lower() in title.lower():
+                                wins = gw.getWindowsWithTitle(title)
+                                if wins:
+                                    win = wins[0]
+                                    try:
+                                        win.activate()
+                                        time.sleep(0.2)
+                                        return True
+                                    except Exception:
+                                        try:
+                                            win.minimize()
+                                            time.sleep(0.05)
+                                            win.maximize()
+                                            time.sleep(0.2)
+                                            return True
+                                        except Exception:
+                                            continue
+                        except Exception:
+                            continue
+            sw, sh = pyautogui.size()
+            pyautogui.click(int(sw*0.5), int(sh*0.5))
+            time.sleep(0.12)
+            return True
+        except Exception:
+            return False
+
+    def _locate_skip_button_regions(self):
+        sw, sh = pyautogui.size()
+        regions = []
+        regions.append((int(sw*0.55), int(sh*0.6), int(sw*0.4), int(sh*0.35)))
+        regions.append((int(sw*0.25), int(sh*0.6), int(sw*0.5), int(sh*0.35)))
+        regions.append((int(sw*0.7), int(sh*0.7), int(sw*0.22), int(sh*0.22)))
+        regions.append((int(sw*0.2), int(sh*0.2), int(sw*0.6), int(sh*0.6)))
+        return regions
+
+    def _try_click_skip_images(self):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        regions = self._locate_skip_button_regions()
+        for name in SKIP_IMAGE_NAMES:
+            path = os.path.join(script_dir, name)
+            if not os.path.exists(path):
+                continue
+            for region in regions:
+                try:
+                    if cv2:
+                        loc = pyautogui.locateCenterOnScreen(path, region=region, confidence=0.78)
+                    else:
+                        loc = pyautogui.locateCenterOnScreen(path, region=region)
+                    if loc:
+                        dx = int((math.sin(time.time())*3))
+                        dy = int((math.cos(time.time())*3))
+                        x_click = loc.x + dx
+                        y_click = loc.y + dy
+                        pyautogui.moveTo(x_click, y_click, duration=0.12)
+                        pyautogui.click(x_click, y_click)
+                        time.sleep(0.12)
+                        return True
+                except Exception:
+                    continue
+        return False
+
+    def skip_youtube_ad(self):
+        try:
+            self.speak("Trying to skip the ad.")
+            self._focus_browser_window()
+            attempts = 6
+            for attempt in range(attempts):
+                try:
+                    for k in ['k', 'l', 'right', 'space', 'm']:
+                        try:
+                            pyautogui.press(k)
+                            time.sleep(0.1)
+                        except Exception:
+                            pass
+                    try:
+                        pyautogui.press('right', presses=2, interval=0.08)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+                clicked = self._try_click_skip_images()
+                if clicked:
+                    self.speak("Skipped the ad.")
+                    return True
+
+                try:
+                    pyautogui.press('n')
+                except Exception:
+                    pass
+
+                time.sleep(0.5)
+            try:
+                pyautogui.press('nexttrack')
+                self.speak("Attempted next track as fallback.")
+                return True
+            except Exception:
+                pass
+
+            self.speak("I tried multiple methods but couldn't detect the skip button. Make sure the video is visible.")
+            return False
+        except Exception as e:
+            print(f"{Fore.RED}skip_youtube_ad error: {e}{Style.RESET_ALL}")
+            self.speak("Sorry, I couldn't skip the ad automatically.")
+            return False
+
+    def play_next_track(self):
+        try:
+            self._focus_browser_window()
+            try:
+                pyautogui.press('n', presses=2, interval=0.12)
+            except Exception:
+                pass
+            time.sleep(0.15)
+            try:
+                pyautogui.press('nexttrack')
+            except Exception:
+                pass
+            self.speak("Playing the next track.")
+            return True
+        except Exception as e:
+            print(f"{Fore.RED}play_next_track error: {e}{Style.RESET_ALL}")
+            self.speak("Sorry, I couldn't go to the next track.")
+            return False
+
+    def play_pause_player(self):
+        try:
+            self._focus_browser_window()
+            pyautogui.press('k')
+            return True
+        except Exception:
+            return False
+
+    # Command processor
     def process_command(self, command):
         if not command:
             return True
         original = command
         command = command.lower().strip()
-
-        # remove wake words
-        for w in ['loki', 'lokesh', 'low key' 'hey']:
+        for w in ['loki', 'lokesh', 'low key', 'hey']:
             if command.startswith(w):
                 command = command.replace(w, '', 1).strip()
-
         command = re.sub(r'\s+', ' ', command)
         words = set(command.split())
 
@@ -629,6 +799,7 @@ class LokiAssistant:
             is_question = True
         if '?' in original:
             is_question = True
+
         math_patterns = [
             r"^what\s+is\s+\d+[\s+\+\-\*/x]\s*\d+",
             r"^calculate\s+\d+[\s+\+\-\*/x]\s*\d+",
@@ -659,10 +830,9 @@ class LokiAssistant:
 
         is_action = any(re.search(r'\b' + re.escape(k) + r'\b', command) for k in self.action_keywords)
         if not (is_question or is_action):
-            # remain silent
             return True
 
-        # set listening duration
+        # listening duration change
         if ("listening" in command or "listen" in command) and any(w in words for w in ["set", "change", "make"]):
             m = re.search(r"(\d+)", command)
             if m:
@@ -674,7 +844,7 @@ class LokiAssistant:
                 self.speak("Please tell me how many seconds to listen.")
                 return True
 
-        # change speech rate
+        # speech rate
         if any(w in command for w in ["speech rate", "speak faster", "speak slower", "change speech"]):
             m = re.search(r"(\d{2,3})", command)
             if m:
@@ -713,7 +883,7 @@ class LokiAssistant:
                     self.speak('TTS engine not available.')
                 return True
 
-        # clean wake word again
+        # again remove wake words
         for w in ['loki', 'lokesh', 'low key']:
             if command.startswith(w):
                 command = command.replace(w, '', 1).strip()
@@ -721,7 +891,7 @@ class LokiAssistant:
         if not command:
             return True
 
-        # Basic commands handling
+        # Basic commands
         if any(word in command for word in ["hello", "hi", "hey"]):
             self.speak("Hello! Yogesh, I'm Loki — your personal assistant. How can I help you today?")
             return True
@@ -740,6 +910,32 @@ class LokiAssistant:
             self.take_screenshot()
             return True
 
+        # NEW controls: skip ad / next track / play / pause
+        if "skip ad" in command or "skip ads" in command or "skip the ad" in command:
+            self.skip_youtube_ad()
+            return True
+
+        if "play next song" in command or "play next songs" in command or "next song" in command or "play next" in command or "next track" in command:
+            self.play_next_track()
+            return True
+
+        if "play music" in command or ("play" in command and "music" in command):
+            played = self.play_pause_player()
+            if played:
+                self.speak("Playing the music.")
+            else:
+                self.speak("Tried to play the music.")
+            return True
+
+        if "pause" in command or ("stop" in command and "music" in command):
+            paused = self.play_pause_player()
+            if paused:
+                self.speak("Paused.")
+            else:
+                self.speak("Tried to pause.")
+            return True
+
+        # closing, opening, etc (kept original)
         if "close" in command:
             if "chrome" in command:
                 self.close_app("chrome.exe")
@@ -788,7 +984,7 @@ class LokiAssistant:
                 self.close_app("Music.UI.exe")
             else:
                 self.speak("Opening YouTube Music")
-                webbrowser.open('https://music.youtube.com/watch?v=yNeX4YJC-W4&si=gtuwjhLwm_Yz5JX3')
+                webbrowser.open('https://music.youtube.com')
             return True
 
         if "youtube" in command:
@@ -839,7 +1035,7 @@ class LokiAssistant:
             self.speak("You're welcome! Is there anything else I can help you with?")
             return True
 
-        if any(word in command for word in ["goodbye", "bye", "quit", "exit", "stop"]):
+        if any(word in command for word in ["goodbye", "bye", "quit", "exit"]):
             self.speak("Goodbye! Have a great day!")
             return False
 
@@ -883,22 +1079,22 @@ class LokiAssistant:
             if re.search(r'how\s+(do|can)\s+you\s+(help|assist)', command):
                 self.speak("I can help open apps, perform calculations, tell the time, search the web, and more.")
                 return True
-            # generic fallback (don't stay silent)
             self.speak("I can help with many tasks — please try rephrasing or ask me to open an app or operations.")
             return True
 
         return True
 
     def run(self):
-        """Main loop"""
-        # greeting
         self.speak("Hello! Yogesh. I'm Loki, your personal assistant. How can I help you?")
         running = True
         while running:
-            command = self.listen()
+            command = ""
+            try:
+                command = self.listen()
+            except Exception:
+                pass
             if command:
                 running = self.process_command(command)
-            # small sleep prevents busy looping
             time.sleep(0.1)
 
     def shutdown(self):
@@ -913,7 +1109,7 @@ class LokiAssistant:
         except Exception:
             pass
 
-# ---------- Main startup with overlay integration ----------
+# ---------- Main ----------
 def main():
     overlay_queue = queue.Queue() if ENABLE_GUI else None
     overlay = None
@@ -922,7 +1118,6 @@ def main():
         overlay.start()
     assistant = LokiAssistant(overlay_queue=overlay_queue)
 
-    # Attach overlay updates to assistant's own events via queue (already used in speak/listen)
     try:
         assistant.run()
     except KeyboardInterrupt:
