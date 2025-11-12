@@ -1,0 +1,1 @@
+pip install pyttsx3 SpeechRecognition sounddevice numpy pyautogui Pillow colorama psutil
